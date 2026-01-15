@@ -2,7 +2,7 @@
   "name": "react-native-new-template",
   "version": "0.0.5",
   "description": "React Native Template",
-  "repository": "git@github.com:Esemesek/react-native-new-template.git",
-  "author": "Kacper Wiszczuk <kacperwiszczuk@gmail.com>",
+  "repository": "git@github.com:hsemo/react-native-template.git",
+  "author": "Abhishek Rathore <ab.r4thore@gmail.com>",
   "license": "MIT"
 }
