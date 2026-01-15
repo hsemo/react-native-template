@@ -1,0 +1,6 @@
+const BUTTON_ICON_NAMES = {
+  LEFT_ARROW: 'LEFT_ARROW',
+  DELETE_BIN: 'DELETE_BIN',
+} as const;
+
+export default BUTTON_ICON_NAMES;

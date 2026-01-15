@@ -1,0 +1,19 @@
+import Svg, { Path } from 'react-native-svg';
+
+const CloseIcon = ({ width, height, size, ...props }: SvgPropsExtended) => (
+  <Svg
+    width={width ?? size}
+    height={height ?? size}
+    viewBox="0 0 16 16"
+    {...props}
+  >
+    <Path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="m8 8.707 3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708z"
+      fill="currentColor"
+    />
+  </Svg>
+);
+
+export default CloseIcon;

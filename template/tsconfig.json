@@ -1,0 +1,24 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "types": ["jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@src/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@navigation/*": ["./src/navigation/*"],
+      "@utility/*": ["./src/utility/*"],
+      "@utility": ["./src/utility"],
+      "@screens/*": ["./src/screens/*"],
+      "@network/*": ["./src/network/*"],
+      "@assets/*": ["./src/assets/*"],
+      "@theme/*": ["./src/theme/*"],
+      "@constants": ["./src/constants"],
+      "@constants/*": ["./src/constants/*"],
+      "@storage/*": ["./src/storage/*"]
+      "@store/*": ["./src/store/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods"]
+}
