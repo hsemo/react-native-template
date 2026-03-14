@@ -15,8 +15,8 @@
       "@theme/*": ["./src/theme/*"],
       "@constants": ["./src/constants"],
       "@constants/*": ["./src/constants/*"],
-      "@storage/*": ["./src/storage/*"]
-      "@store/*": ["./src/store/*"]
+      "@storage/*": ["./src/storage/*"],
+      "@store/*": ["./src/store/*"],
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

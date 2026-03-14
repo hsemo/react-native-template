@@ -2,21 +2,30 @@ import { useEffect, useMemo } from 'react';
 import { NavigationContainer, Theme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useAppDispatch, useAppSelector } from '@src/store';
+import { useAppDispatch, useAppSelector } from '@src/store'; // @if withRedux
 import useThemeColors from '@src/customHooks/useThemeColors';
-import { selectAppTheme, setAppTheme } from '@src/store/slices/appSlice';
+import { selectAppTheme, setAppTheme } from '@src/store/slices/appSlice'; // @if withRedux
 import { storage } from '@src/storage';
 import { STORAGE_KEYS } from '@src/constants/storage';
 import { AppThemeValue } from '@src/constants/enums';
 import { Fonts } from '@src/theme/fonts';
 
 import StackNavigator from './StackNavigator';
+import useAppState from '@src/store/zustand/placeholder'; // @if withZustand
 
 const Routes = () => {
+  /* @if withRedux */
   const dispatch = useAppDispatch();
+  /* @endif */
 
   const colors = useThemeColors();
+
+  /* @if withRedux */
   const theme = useAppSelector(selectAppTheme);
+  /* @else */
+  const theme = useAppState(state => state.appTheme); // @if withZustand
+  const theme = AppThemeValue.System; // @if !withZustand
+  /* @endif */
 
   const navigationTheme: Theme = useMemo(() => {
     return {
@@ -58,7 +67,9 @@ const Routes = () => {
       appTheme = AppThemeValue.System;
     }
 
+    /* @if withRedux */
     dispatch(setAppTheme(appTheme as AppThemeValue));
+    /* @endif */
   }, []);
 
   return (

@@ -1,146 +1,190 @@
 #!/usr/bin/env node
-/**
- * @module script
- *
- * This script initializes a new React Native project by setting up a Git repository,
- * creating necessary configuration files, and prompting the user to select plugins
- * to include in the template.
- */
 
-const { exec, execSync } = require('child_process');
-const process = require('process');
+const { execSync } = require('child_process');
 const fs = require('fs');
-const { rm } = require('fs').promises;
-let prompt = require('prompt');
+const path = require('path');
+const inquirer = require('inquirer');
 
 const {
   dependencies,
   pluginPaths,
-  gitignoreContent,
   PLUGINS,
-} = require('./constants');
+  gitignoreContent,
+} = require('./constants/index.js');
 
-console.log('This is post init script');
+function evaluateCondition(condition, config) {
+  const isNegated = condition.startsWith('!');
+  const feature = isNegated ? condition.slice(1) : condition;
+  const isSelected = config[feature]?.toLowerCase() === 'y';
+  return isNegated ? !isSelected : isSelected;
+}
 
-// Function to run a Git command
-function runGitCommand(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        reject(`Error: ${error.message}`);
-        return;
+function pruneFile(filePath, config) {
+  if (!fs.existsSync(filePath)) return;
+  let content = fs.readFileSync(filePath, 'utf8');
+  let originalContent = content;
+
+  // 1. Handle blocks: /* @if feature */ ... [/* @else */ ...] /* @endif */
+  // Matches both /* and /**
+  const blockRegex = /\/\*\*? @if ([!\w]+) \*\/([\s\S]*?)(?:\/\*\*? @else \*\/([\s\S]*?))?\/\*\*? @endif \*\//g;
+  content = content.replace(blockRegex, (match, condition, ifContent, elseContent) => {
+    return evaluateCondition(condition, config) ? ifContent : (elseContent || '');
+  });
+
+  // 2. Handle single line markers: code // @if feature
+  const lineRegex = /^(.*)\/\/ @if ([!\w]+)$/gm;
+  content = content.replace(lineRegex, (match, code, condition) => {
+    return evaluateCondition(condition, config) ? code : '';
+  });
+
+  // 3. Cleanup: Remove markers and whitespace
+  if (content !== originalContent) {
+    // Remove trailing whitespace on each line
+    content = content.split('\n').map(line => line.trimEnd()).join('\n');
+
+    // Collapse 3+ consecutive newlines into 2 (one empty line)
+    content = content.replace(/\n{3,}/g, '\n\n');
+
+    // Trim leading/trailing whitespace of the file
+    content = content.trim() + '\n';
+
+    fs.writeFileSync(filePath, content);
+    console.log(`Pruned and cleaned: ${filePath}`);
+  }
+}
+
+function getAllFiles(dirPath, arrayOfFiles) {
+  const files = fs.readdirSync(dirPath);
+
+  arrayOfFiles = arrayOfFiles || [];
+
+  files.forEach(function (file) {
+    const fullPath = path.join(dirPath, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      if (file !== 'node_modules' && file !== '.git' && file !== 'android' && file !== 'ios') {
+        arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
       }
-      if (stderr) {
-        reject(`Stderr: ${stderr}`);
-        return;
+    } else {
+      if (/\.(ts|tsx|js|json)$/.test(file) && file !== 'package-lock.json') {
+        arrayOfFiles.push(fullPath);
       }
-      resolve(stdout);
-    });
+    }
   });
+
+  return arrayOfFiles;
 }
 
-// Initialize a new Git repository
-async function initRepo() {
-  console.log('current working directory: ' + process.cwd());
-  try {
-    const result = await runGitCommand('git init');
-    console.log(result);
-  } catch (error) {
-    console.error(error);
-  }
-}
+async function askFeatures() {
+  console.log('\n--- React Native Template Configuration ---\n');
 
-function createGitignore() {
-  fs.writeFile('.gitignore', gitignoreContent.trim(), (err) => {
-    if (err) {
-      console.error('Error creating .gitignore file:', err);
+  let confirmed = false;
+  let rawResult = {}; // { withRedux: "y", withZustand: "n", ... }
+
+  while (!confirmed) {
+    const listAnswer = await inquirer.prompt([
+      {
+        type: 'checkbox',
+        name: 'features',
+        message: 'Select the features you want to include (Space to toggle, Enter to confirm, Up/Down/j/k to navigate):',
+        choices: PLUGINS.map(plugin => ({
+          name: plugin.replace('with', ''),
+          value: plugin,
+          checked: true,
+        })),
+        loop: false,
+      }
+    ]);
+
+    // Map the array of selected features back to the required object shape
+    const selectedFeatures = listAnswer.features || [];
+    rawResult = PLUGINS.reduce((acc, plugin) => {
+      acc[plugin] = selectedFeatures.includes(plugin) ? 'y' : 'n';
+      return acc;
+    }, {});
+
+    console.log('\n--- Selection Summary ---');
+    for (const plugin of PLUGINS) {
+      console.log(`${plugin.replace('with', '')}: ${rawResult[plugin] === 'y' ? 'Yes' : 'No'}`);
+    }
+    console.log('-------------------------\n');
+
+    const confirmAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'isSatisfied',
+        message: 'Are you satisfied with these selections?',
+        default: true
+      }
+    ]);
+
+    if (confirmAnswer.isSatisfied) {
+      confirmed = true;
     } else {
-      console.log('.gitignore file created successfully!');
+      console.log('\nLet\'s try selecting features again...\n');
     }
-  });
-}
-
-function createEnv() {
-  fs.writeFile('.env', '', (err) => {
-    if (err) {
-      console.error('Error creating .env file:', err);
-    } else {
-      console.log('.env file created successfully!');
-    }
-  });
-}
-
-function getPromptSchema() {
-  const schemaProperties = PLUGINS.reduce(
-    (properties, plugin) => ({
-      ...properties,
-      [plugin]: {
-        pattern: /y|n/g,
-        message: 'please answer in - (y/n)',
-        required: true,
-      },
-    }),
-    {}
-  );
-
-  const schema = {
-    properties: schemaProperties,
-  };
-
-  return schema;
-}
-
-async function readConfig() {
-  console.log('Select the Plugins you wish to include with the template:');
-
-  prompt.start();
-
-  // prompt user to select plugins to install
-  const responses = await prompt.get(getPromptSchema());
-
-  processConfigs(responses);
-}
-
-function processConfigs(configs) {
-  Object.entries(configs).map(([feat, ans]) => {
-    if (ans?.toLowerCase() === 'y') {
-      // if feature is selected, install its dependencies
-      const featDependencies = dependencies[feat];
-
-      installDependencies(featDependencies);
-    } else if (ans?.toLowerCase() === 'n') {
-      // if feature is not selected remove source from template
-      const featSourcePath = pluginPaths[feat];
-
-      cleanPluginsFromTemplate(featSourcePath);
-    }
-  });
-}
-
-async function installDependencies(deps) {
-  try {
-    deps.forEach((dep) => {
-      execSync(`npm install ${dep}`);
-    });
-  } catch (error) {
-    console.log('Error in installing deps =>', error.message);
   }
+
+  return rawResult;
 }
 
-async function cleanPluginsFromTemplate(pluginPath) {
-  try {
-    await rm(pluginPath, { recursive: true });
-  } catch (error) {
-    console.log('Error in clean up =>', error.message);
-  }
-}
-
-// Example usage
 async function main() {
-  // await readConfig();
-  await initRepo();
-  createGitignore();
-  createEnv();
+  try {
+    const config = await askFeatures();
+
+    // Dependency check: withBottomTabs requires withNavigation
+    if (config.withBottomTabs === 'y') {
+      config.withNavigation = 'y';
+    }
+
+    console.log('\nProcessing features...');
+
+    for (const plugin of PLUGINS) {
+      const isSelected = config[plugin]?.toLowerCase() === 'y';
+
+      if (isSelected) {
+        // Install dependencies
+        const deps = dependencies[plugin];
+        if (deps && deps.length > 0) {
+          console.log(`Installing dependencies for ${plugin}: ${deps.join(', ')}`);
+          execSync(`npm install ${deps.join(' ')}`, { stdio: 'inherit' });
+        }
+      } else {
+        // Remove files
+        const pathsToRemove = pluginPaths[plugin];
+        if (pathsToRemove) {
+          const paths = Array.isArray(pathsToRemove) ? pathsToRemove : [pathsToRemove];
+          paths.forEach(p => {
+            const fullP = path.join(process.cwd(), p);
+            if (fs.existsSync(fullP)) {
+              console.log(`Removing files for ${plugin}: ${fullP}`);
+              fs.rmSync(fullP, { recursive: true, force: true });
+            }
+          });
+        }
+      }
+    }
+
+    // Prune code in all files
+    console.log('\nPruning project files...');
+    const allFiles = getAllFiles(process.cwd());
+    allFiles.forEach(file => pruneFile(file, config));
+
+    // Generate .gitignore
+    console.log('\nGenerating .gitignore...');
+    fs.writeFileSync(path.join(process.cwd(), '.gitignore'), gitignoreContent.trim() + '\n');
+
+    // Final Touch: Run Prettier
+    try {
+      console.log('\nRunning Prettier formatter...');
+      execSync('npx prettier --write .', { stdio: 'inherit' });
+    } catch (prettierError) {
+      console.warn('\nWarning: Prettier failed to run, but template setup is complete.');
+    }
+
+    console.log('\nTemplate configuration complete!');
+  } catch (error) {
+    console.error('\nError during template configuration:', error);
+  }
 }
 
 main();

@@ -14,28 +14,30 @@ const path = require('path');
  * can choose to include in template
  * @type {Array<string>}
  */
-const PLUGINS = ['withFileUpload', 'withDatePicker', 'withRedux'];
+const PLUGINS = [
+  'withRedux',
+  'withZustand',
+  'withReactQuery',
+  'withNavigation',
+  'withBottomTabs',
+];
 
 /**
  * 3rd party dependencies based on feature
  * @type {Object<string, Array<string>>}
  */
 const dependencies = {
-  withFileUpload: [
-    'react-native-document-picker',
-    'react-native-toast-message',
-    'react-native-fs',
-    'react-native-file-viewer',
+  withRedux: ['@reduxjs/toolkit', 'react-redux'],
+  withZustand: ['zustand'],
+  withReactQuery: ['@tanstack/react-query'],
+  withNavigation: [
+    '@react-navigation/native',
+    'react-native-screens',
+    'react-native-safe-area-context',
+    '@react-navigation/stack',
+    'react-native-gesture-handler',
   ],
-  withDatePicker: [
-    'react-native-modal',
-    'react-native-modern-datepicker',
-    'moment',
-  ],
-  withRedux: [
-    '@reduxjs/toolkit',
-    'react-redux'
-  ],
+  withBottomTabs: ['@react-navigation/bottom-tabs'],
 };
 
 /**
@@ -43,8 +45,18 @@ const dependencies = {
  * @type {Object<string, string>}
  */
 const pluginPaths = {
-  withFileUpload: path.join('.', 'src', 'HOCs'),
-  withDatePicker: path.join('.', 'src', 'HOCs'),
+  withRedux: [
+    path.join('src', 'store', 'index.ts'),
+    path.join('src', 'store', 'slices'),
+  ],
+  withNavigation: [
+    path.join('src', 'navigation'),
+    path.join('src', 'types', 'navigation.d.ts'),
+  ],
+  withZustand: [path.join('src', 'store', 'zustand')],
+  withBottomTabs: [
+    path.join('src', 'navigation', 'BottomTabsNavigator.tsx'),
+  ],
 };
 
 const gitignoreContent = `

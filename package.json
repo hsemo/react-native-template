@@ -4,5 +4,12 @@
   "description": "React Native Template",
   "repository": "git@github.com:hsemo/react-native-template.git",
   "author": "Abhishek Rathore <ab.r4thore@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.11.2",
+    "@tanstack/react-query": "^5.90.21",
+    "inquirer": "^8.2.7",
+    "react-redux": "^9.2.0",
+    "zustand": "^5.0.11"
+  }
 }
