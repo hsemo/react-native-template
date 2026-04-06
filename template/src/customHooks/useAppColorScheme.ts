@@ -7,12 +7,10 @@ import useAppState from '@src/store/zustand/placeholder';
 
 function useAppColorScheme() {
   const deviceTheme = useColorScheme();
-  /* @if withRedux */
-  const appTheme = useAppSelector(selectAppTheme);
-  /* @endif */
-  /* @if withZustand */
-  const appTheme = useAppState(state => state.appTheme);
-  /* @endif */
+  
+  const reduxTheme = useAppSelector(selectAppTheme);
+  const zustandTheme = useAppState(state => state.appTheme);
+  const appTheme = reduxTheme || zustandTheme;
 
   if (appTheme === AppThemeValue.System) {
     return deviceTheme as AppThemeValue;

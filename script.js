@@ -4,6 +4,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const inquirer = require('inquirer');
+const { Project, SyntaxKind } = require('ts-morph');
 
 const {
   dependencies,
@@ -12,73 +13,249 @@ const {
   gitignoreContent,
 } = require('./constants/index.js');
 
-function evaluateCondition(condition, config) {
-  const isNegated = condition.startsWith('!');
-  const feature = isNegated ? condition.slice(1) : condition;
-  const isSelected = config[feature]?.toLowerCase() === 'y';
-  return isNegated ? !isSelected : isSelected;
-}
-
-function pruneFile(filePath, config) {
-  if (!fs.existsSync(filePath)) return;
-  let content = fs.readFileSync(filePath, 'utf8');
-  let originalContent = content;
-
-  // 1. Handle blocks: /* @if feature */ ... [/* @else */ ...] /* @endif */
-  // Matches both /* and /**
-  const blockRegex = /\/\*\*? @if ([!\w]+) \*\/([\s\S]*?)(?:\/\*\*? @else \*\/([\s\S]*?))?\/\*\*? @endif \*\//g;
-  content = content.replace(blockRegex, (match, condition, ifContent, elseContent) => {
-    return evaluateCondition(condition, config) ? ifContent : (elseContent || '');
-  });
-
-  // 2. Handle single line markers: code // @if feature
-  const lineRegex = /^(.*)\/\/ @if ([!\w]+)$/gm;
-  content = content.replace(lineRegex, (match, code, condition) => {
-    return evaluateCondition(condition, config) ? code : '';
-  });
-
-  // 3. Cleanup: Remove markers and whitespace
-  if (content !== originalContent) {
-    // Remove trailing whitespace on each line
-    content = content.split('\n').map(line => line.trimEnd()).join('\n');
-
-    // Collapse 3+ consecutive newlines into 2 (one empty line)
-    content = content.replace(/\n{3,}/g, '\n\n');
-
-    // Trim leading/trailing whitespace of the file
-    content = content.trim() + '\n';
-
-    fs.writeFileSync(filePath, content);
-    console.log(`Pruned and cleaned: ${filePath}`);
-  }
-}
-
-function getAllFiles(dirPath, arrayOfFiles) {
-  const files = fs.readdirSync(dirPath);
-
-  arrayOfFiles = arrayOfFiles || [];
-
-  files.forEach(function (file) {
-    const fullPath = path.join(dirPath, file);
-    if (fs.statSync(fullPath).isDirectory()) {
-      if (file !== 'node_modules' && file !== '.git' && file !== 'android' && file !== 'ios') {
-        arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
-      }
-    } else {
-      if (/\.(ts|tsx|js|json)$/.test(file) && file !== 'package-lock.json') {
-        arrayOfFiles.push(fullPath);
+function unwrapJsxElement(sourceFile, componentName) {
+  const nodesToUnwrap = [];
+  sourceFile.forEachDescendant(node => {
+    if (node.getKind() === SyntaxKind.JsxElement) {
+      const openingElement = node.getOpeningElement();
+      if (openingElement.getTagNameNode().getText() === componentName) {
+        nodesToUnwrap.push(node);
       }
     }
   });
+  nodesToUnwrap.forEach(node => {
+    const childrenText = node.getJsxChildren().map(c => c.getText()).join('\n');
+    node.replaceWithText(childrenText);
+  });
+}
 
-  return arrayOfFiles;
+function removeImport(sourceFile, moduleSpecifier) {
+  const imp = sourceFile.getImportDeclaration(moduleSpecifier);
+  if (imp) imp.remove();
+}
+
+function pruneWithTsMorph(config) {
+  const project = new Project();
+  
+  // Add relevant files
+  const root = process.cwd();
+  project.addSourceFilesAtPaths([
+    path.join(root, 'App.tsx'),
+    path.join(root, 'src/**/*.ts'),
+    path.join(root, 'src/**/*.tsx')
+  ]);
+
+  // 1. App.tsx
+  const appFile = project.getSourceFile('App.tsx');
+  if (appFile) {
+    if (config?.withRedux !== 'y') {
+      removeImport(appFile, 'react-redux');
+      removeImport(appFile, '@src/store');
+      unwrapJsxElement(appFile, 'Provider');
+    }
+    if (config?.withReactQuery !== 'y') {
+      removeImport(appFile, '@tanstack/react-query');
+      const qc = appFile.getVariableDeclaration('queryClient');
+      if (qc) qc.getVariableStatement().remove();
+      unwrapJsxElement(appFile, 'QueryClientProvider');
+    }
+    if (config?.withNavigation !== 'y') {
+      removeImport(appFile, '@navigation/Routes');
+      
+      const replaceNodes = [];
+      appFile.forEachDescendant(node => {
+        if (node.getKind() === SyntaxKind.JsxSelfClosingElement) {
+          if (node.getTagNameNode().getText() === 'Routes') {
+            replaceNodes.push(node);
+          }
+        }
+      });
+      replaceNodes.forEach(node => node.replaceWithText('<HomeScreen />'));
+    } else {
+      // Navigation is Selected, remove HomeScreen fallback
+      removeImport(appFile, '@src/screens/home/Home');
+    }
+  }
+
+  // 2. useAppColorScheme.ts
+  const hookFile = project.getSourceFile('useAppColorScheme.ts');
+  if (hookFile) {
+    let appThemeInit = [];
+    if (config?.withRedux !== 'y') {
+      removeImport(hookFile, '@src/store');
+      removeImport(hookFile, '@src/store/slices/appSlice');
+      const rt = hookFile.getVariableDeclaration('reduxTheme');
+      if (rt) rt.getVariableStatement().remove();
+    } else {
+      appThemeInit.push('reduxTheme');
+    }
+    
+    if (config?.withZustand !== 'y') {
+      removeImport(hookFile, '@src/store/zustand/placeholder');
+      const zt = hookFile.getVariableDeclaration('zustandTheme');
+      if (zt) zt.getVariableStatement().remove();
+    } else {
+      appThemeInit.push('zustandTheme');
+    }
+
+    const appThemeDecl = hookFile.getVariableDeclaration('appTheme');
+    if (appThemeDecl) {
+      if (appThemeInit.length > 0) {
+        appThemeDecl.setInitializer(appThemeInit.join(' || '));
+      } else {
+        appThemeDecl.setInitializer('null');
+      }
+    }
+  }
+
+  // 3. Routes.tsx
+  const routesFile = project.getSourceFile('Routes.tsx');
+  if (routesFile) {
+    let themeInit = [];
+    if (config?.withRedux !== 'y') {
+      removeImport(routesFile, '@src/store');
+      removeImport(routesFile, '@src/store/slices/appSlice');
+      
+      const dispatch = routesFile.getVariableDeclaration('dispatch');
+      if (dispatch) dispatch.getVariableStatement().remove();
+      
+      const rt = routesFile.getVariableDeclaration('reduxTheme');
+      if (rt) rt.getVariableStatement().remove();
+      
+      // Remove dispatch(setAppTheme(appTheme as AppThemeValue));
+      const statementsToRemove = [];
+      routesFile.forEachDescendant(node => {
+        if (node.getKind() === SyntaxKind.CallExpression) {
+          if (node.getExpression().getText() === 'dispatch') {
+            const statement = node.getFirstAncestorByKind(SyntaxKind.ExpressionStatement);
+            if (statement) statementsToRemove.push(statement);
+          }
+        }
+      });
+      statementsToRemove.forEach(statement => statement.remove());
+    } else {
+      themeInit.push('reduxTheme');
+    }
+    
+    if (config?.withZustand !== 'y') {
+      removeImport(routesFile, '@src/store/zustand/placeholder');
+      const zt = routesFile.getVariableDeclaration('zustandTheme');
+      if (zt) zt.getVariableStatement().remove();
+    } else {
+      themeInit.push('zustandTheme');
+    }
+
+    themeInit.push('defaultTheme');
+    const themeDecl = routesFile.getVariableDeclaration('theme');
+    if (themeDecl) themeDecl.setInitializer(themeInit.join(' || '));
+  }
+
+  // 4. StackNavigator.tsx
+  const stackFile = project.getSourceFile('StackNavigator.tsx');
+  if (stackFile) {
+    const nodesToRemove = [];
+    if (config?.withBottomTabs !== 'y') {
+      removeImport(stackFile, './BottomTabsNavigator');
+      stackFile.forEachDescendant(node => {
+        if (node.getKind() === SyntaxKind.JsxSelfClosingElement) {
+          const nameProp = node.getAttribute('name');
+          if (nameProp && nameProp.getText().includes('BottomTabs')) {
+            nodesToRemove.push(node);
+          }
+        }
+      });
+    } else {
+      // Bottom tabs selected
+      stackFile.forEachDescendant(node => {
+        if (node.getKind() === SyntaxKind.JsxSelfClosingElement) {
+          const nameProp = node.getAttribute('name');
+          if (nameProp && nameProp.getText().includes('HOME')) {
+            nodesToRemove.push(node);
+          }
+        }
+      });
+    }
+    nodesToRemove.forEach(node => node.replaceWithText(''));
+  }
+
+  // 5. RoutesConstants/index.ts
+  const routesConstFile = project.getSourceFile('index.ts');
+  if (routesConstFile && routesConstFile.getDirectory().getBaseName() === 'RoutesConstants') {
+    if (config?.withBottomTabs !== 'y') {
+      const bts = routesConstFile.getVariableDeclaration('BottomTabsScreens');
+      if (bts) bts.getVariableStatement().remove();
+      
+      const ss = routesConstFile.getVariableDeclaration('StackScreens');
+      if (ss) {
+        const init = ss.getInitializerIfKind(SyntaxKind.AsExpression)?.getExpression();
+        if (init && init.getKind() === SyntaxKind.ObjectLiteralExpression) {
+          const prop = init.getProperty('BottomTabs');
+          if (prop) prop.remove();
+        }
+      }
+    } else {
+      const ss = routesConstFile.getVariableDeclaration('StackScreens');
+      if (ss) {
+        const init = ss.getInitializerIfKind(SyntaxKind.AsExpression)?.getExpression();
+        if (init && init.getKind() === SyntaxKind.ObjectLiteralExpression) {
+          const prop = init.getProperty('HOME');
+          if (prop) prop.remove();
+        }
+      }
+    }
+  }
+
+  // 6. types/navigation.d.ts
+  const navTypesFile = project.getSourceFile('navigation.d.ts');
+  if (navTypesFile) {
+    if (config?.withBottomTabs !== 'y') {
+      const bts = navTypesFile.getVariableDeclaration('BottomHOME');
+      if (bts) bts.getVariableStatement().remove();
+      
+      const bt = navTypesFile.getVariableDeclaration('BottomTabs');
+      if (bt) bt.getVariableStatement().remove();
+      
+      const typeAliases = navTypesFile.getTypeAliases();
+      const paramsList = typeAliases.find(t => t.getName() === 'MainStackScreensParamsList');
+      if (paramsList) {
+        const typeNode = paramsList.getTypeNode();
+        if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
+          const member = typeNode.getMember(m => m.getText().includes('[BottomTabs]'));
+          if (member) member.remove();
+        }
+      }
+      
+      const btScreenNames = typeAliases.find(t => t.getName() === 'BottomTabsScreenNames');
+      if (btScreenNames) btScreenNames.remove();
+      
+      const btParamsList = typeAliases.find(t => t.getName() === 'BottomTabsParamsList');
+      if (btParamsList) btParamsList.remove();
+    } else {
+      const sh = navTypesFile.getVariableDeclaration('StackHOME');
+      if (sh) sh.getVariableStatement().remove();
+      
+      const typeAliases = navTypesFile.getTypeAliases();
+      const paramsList = typeAliases.find(t => t.getName() === 'MainStackScreensParamsList');
+      if (paramsList) {
+        const typeNode = paramsList.getTypeNode();
+        if (typeNode && typeNode.getKind() === SyntaxKind.TypeLiteral) {
+          const member = typeNode.getMember(m => m.getText().includes('[StackHOME]'));
+          if (member) member.remove();
+        }
+      }
+    }
+  }
+
+  // Save all modified files
+  project.saveSync();
+  console.log('Finished AST pruning with ts-morph.');
 }
 
 async function askFeatures() {
   console.log('\n--- React Native Template Configuration ---\n');
 
   let confirmed = false;
-  let rawResult = {}; // { withRedux: "y", withZustand: "n", ... }
+  let rawResult = {};
 
   while (!confirmed) {
     const listAnswer = await inquirer.prompt([
@@ -95,7 +272,6 @@ async function askFeatures() {
       }
     ]);
 
-    // Map the array of selected features back to the required object shape
     const selectedFeatures = listAnswer.features || [];
     rawResult = PLUGINS.reduce((acc, plugin) => {
       acc[plugin] = selectedFeatures.includes(plugin) ? 'y' : 'n';
@@ -142,14 +318,12 @@ async function main() {
       const isSelected = config[plugin]?.toLowerCase() === 'y';
 
       if (isSelected) {
-        // Install dependencies
         const deps = dependencies[plugin];
         if (deps && deps.length > 0) {
           console.log(`Installing dependencies for ${plugin}: ${deps.join(', ')}`);
           execSync(`npm install ${deps.join(' ')}`, { stdio: 'inherit' });
         }
       } else {
-        // Remove files
         const pathsToRemove = pluginPaths[plugin];
         if (pathsToRemove) {
           const paths = Array.isArray(pathsToRemove) ? pathsToRemove : [pathsToRemove];
@@ -164,16 +338,14 @@ async function main() {
       }
     }
 
-    // Prune code in all files
-    console.log('\nPruning project files...');
-    const allFiles = getAllFiles(process.cwd());
-    allFiles.forEach(file => pruneFile(file, config));
+    // Prune code using ts-morph
+    console.log('\nPruning project files with AST manipulation...');
+    pruneWithTsMorph(config);
 
     // Generate .gitignore
     console.log('\nGenerating .gitignore...');
     fs.writeFileSync(path.join(process.cwd(), '.gitignore'), gitignoreContent.trim() + '\n');
 
-    // Final Touch: Run Prettier
     try {
       console.log('\nRunning Prettier formatter...');
       execSync('npx prettier --write .', { stdio: 'inherit' });
