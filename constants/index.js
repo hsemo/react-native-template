@@ -53,7 +53,7 @@ const pluginPaths = {
     path.join('src', 'navigation'),
     path.join('src', 'types', 'navigation.d.ts'),
   ],
-  withZustand: [path.join('src', 'store', 'zustand')],
+  withZustand: [path.join('src', 'store', 'useAppState.ts')],
   withBottomTabs: [
     path.join('src', 'navigation', 'BottomTabsNavigator.tsx'),
   ],

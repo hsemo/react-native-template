@@ -11,17 +11,12 @@ import { AppThemeValue } from '@src/constants/enums';
 import { Fonts } from '@src/theme/fonts';
 
 import StackNavigator from './StackNavigator';
-import useAppState from '@src/store/zustand/placeholder';
 
 const Routes = () => {
   const dispatch = useAppDispatch();
   const colors = useThemeColors();
 
-  const reduxTheme = useAppSelector(selectAppTheme);
-  const zustandTheme = useAppState(state => state.appTheme);
-  const defaultTheme = AppThemeValue.System;
-  
-  const theme = reduxTheme || zustandTheme || defaultTheme;
+  const theme = useAppSelector(selectAppTheme) || AppThemeValue.System;
 
   const navigationTheme: Theme = useMemo(() => {
     return {
