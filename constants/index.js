@@ -7,7 +7,7 @@
  * and patterns to be included in the .gitignore file.
  */
 
-const path = require('path');
+const path = require("path");
 
 /**
  * Optional Functions and Components, that users
@@ -15,11 +15,11 @@ const path = require('path');
  * @type {Array<string>}
  */
 const PLUGINS = [
-  'withRedux',
-  'withZustand',
-  'withReactQuery',
-  'withNavigation',
-  'withBottomTabs',
+  "withRedux",
+  "withZustand",
+  "withReactQuery",
+  "withNavigation",
+  "withBottomTabs",
 ];
 
 /**
@@ -27,17 +27,17 @@ const PLUGINS = [
  * @type {Object<string, Array<string>>}
  */
 const dependencies = {
-  withRedux: ['@reduxjs/toolkit', 'react-redux'],
-  withZustand: ['zustand'],
-  withReactQuery: ['@tanstack/react-query'],
+  withRedux: ["@reduxjs/toolkit", "react-redux"],
+  withZustand: ["zustand"],
+  withReactQuery: ["@tanstack/react-query"],
   withNavigation: [
-    '@react-navigation/native',
-    'react-native-screens',
-    'react-native-safe-area-context',
-    '@react-navigation/stack',
-    'react-native-gesture-handler',
+    "@react-navigation/native",
+    "react-native-screens",
+    "react-native-safe-area-context",
+    "@react-navigation/stack",
+    "react-native-gesture-handler",
   ],
-  withBottomTabs: ['@react-navigation/bottom-tabs'],
+  withBottomTabs: ["@react-navigation/bottom-tabs"],
 };
 
 /**
@@ -46,17 +46,15 @@ const dependencies = {
  */
 const pluginPaths = {
   withRedux: [
-    path.join('src', 'store', 'index.ts'),
-    path.join('src', 'store', 'slices'),
+    path.join("src", "store", "index.ts"),
+    path.join("src", "store", "slices"),
   ],
   withNavigation: [
-    path.join('src', 'navigation'),
-    path.join('src', 'types', 'navigation.d.ts'),
+    path.join("src", "navigation"),
+    path.join("src", "types", "navigation.d.ts"),
   ],
-  withZustand: [path.join('src', 'store', 'useAppState.ts')],
-  withBottomTabs: [
-    path.join('src', 'navigation', 'BottomTabsNavigator.tsx'),
-  ],
+  withZustand: [path.join("src", "store", "useAppState.ts")],
+  withBottomTabs: [path.join("src", "navigation", "BottomTabsNavigator.tsx")],
 };
 
 const gitignoreContent = `
@@ -132,6 +130,7 @@ yarn.lock
 # Ruby / CocoaPods
 /ios/Pods/
 /vendor/bundle/
+Podfile.lock
 
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*
